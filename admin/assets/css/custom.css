@@ -1,0 +1,309 @@
+:root {
+    --navbar-height: 60px;
+    --drawer-width: 285px;
+    --primary: #0E4D92;
+}
+
+/* Navbar */
+.moodle-navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1030;
+    height: var(--navbar-height);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    background: #fff;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.navbar-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.nav-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #6a737b;
+    font-size: 1.1rem;
+    text-decoration: none;
+}
+
+.nav-icon-btn:focus-visible,
+.user-toggle:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+.count-badge {
+    position: absolute;
+    top: 2px;
+    right: 0;
+    min-width: 18px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #ca3120;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+}
+
+/* User menu */
+.user-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #1d2125;
+}
+
+.avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: #e9ecef;
+    color: var(--primary);
+    font-size: 0.95rem;
+}
+
+.caret {
+    font-size: 0.7rem;
+}
+
+.navbar-divider {
+    width: 1px;
+    height: 40px;
+    margin: 0 8px;
+    background: #dee2e6;
+}
+
+.theme-switch .form-check-input {
+    width: 2.6em;
+    height: 1.4em;
+    cursor: pointer;
+}
+
+/* Drawer */
+.moodle-drawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1050;
+    width: var(--drawer-width);
+    max-width: 85vw;
+    display: flex;
+    flex-direction: column;
+    background: #f8f9fa;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.3s ease, visibility 0.3s;
+}
+
+.moodle-drawer.show {
+    transform: translateX(0);
+    visibility: visible;
+}
+
+.drawer-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: var(--navbar-height);
+    padding: 0 12px;
+    background: #f8f9fa;
+}
+
+.drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: #1d2125;
+    font-size: 1.1rem;
+}
+
+.drawer-close:focus-visible {
+    border-color: #4a78b0;
+    outline: none;
+}
+
+.drawer-logo {
+    height: 38px;
+    width: auto;
+}
+
+.drawer-nav {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.drawer-link {
+    display: block;
+    padding: 14px 24px;
+    border-bottom: 1px solid #dee2e6;
+    background: #fff;
+    color: #495057;
+    text-decoration: none;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.drawer-link:hover {
+    background: #e8f0fa;
+    color: var(--primary);
+}
+
+.drawer-link.active,
+.drawer-link.active:hover {
+    background: var(--primary);
+    color: #fff;
+}
+
+/* Backdrop */
+.drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s;
+}
+
+.drawer-backdrop.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.page-content {
+    padding: calc(var(--navbar-height) + 1rem) 1rem 1rem;
+}
+
+.settings-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.settings-tabs .nav-link {
+    white-space: nowrap;
+}
+
+.settings-tabs .nav-item {
+    flex: 0 0 auto;
+}
+
+.settings-tabs+.tab-content .card {
+    min-height: 100%;
+}
+
+.home {
+    --bs-primary: #0E4D92;
+    --bs-primary-rgb: 14, 77, 146;
+    --bs-primary-bg-subtle: #e8f0fa;
+    --bs-primary-text-emphasis: #0E4D92;
+    --bs-link-color-rgb: 14, 77, 146;
+    --bs-link-hover-color-rgb: 10, 55, 105;
+}
+
+.home .btn-outline-primary {
+    --bs-btn-color: #0E4D92;
+    --bs-btn-border-color: #dee2e6;
+    --bs-btn-hover-bg: #0E4D92;
+    --bs-btn-hover-border-color: #0E4D92;
+    --bs-btn-active-bg: #0E4D92;
+    --bs-btn-active-border-color: #0E4D92;
+}
+
+.home .bg-primary {
+    background-color: #0E4D92 !important;
+}
+
+/* Gradient banner */
+.welcome {
+    background: linear-gradient(135deg, #0E4D92 0%, #1f6fcf 100%);
+}
+
+/* Fixed-size icon and date tiles */
+.icon-box {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+}
+
+/* Table row hover: system blue instead of the default tint */
+.home .table-hover>tbody>tr:hover>* {
+    --bs-table-bg-state: #e8f0fa;
+    --bs-table-color-state: #1d2125;
+    background-color: #e8f0fa;
+    color: #1d2125;
+}
+
+/* Printing: hide the navigation and keep colors */
+@media print {
+
+    .moodle-navbar,
+    .moodle-drawer,
+    .drawer-backdrop {
+        display: none !important;
+    }
+
+    .page-content {
+        padding-top: 0;
+    }
+
+    .home * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .tab-pane {
+        display: block !important;
+        opacity: 1 !important;
+    }
+}
+
+@media print {
+
+    .moodle-navbar,
+    .moodle-drawer,
+    .drawer-backdrop {
+        display: none !important;
+    }
+
+    .page-content {
+        padding: 0 !important;
+    }
+
+    .card {
+        box-shadow: none !important;
+        border: 1px solid #dee2e6 !important;
+    }
+}
