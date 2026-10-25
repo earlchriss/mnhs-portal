@@ -1,3 +1,12 @@
+<?php
+require_once __DIR__ . "/../../functions/auth.php"; // auth_user() / auth_csrf_token(), even if the page did not load it
+// Who is signed in (the admin guard has already checked this)
+$nav_user = auth_user() ?: [];
+$nav_name = trim((string) ($nav_user["name"] ?? "")) ?: (string) ($nav_user["username"] ?? "Admin");
+$nav_words = preg_split('/\s+/', $nav_name, -1, PREG_SPLIT_NO_EMPTY) ?: ["A"];
+$nav_initials = mb_strtoupper(implode("", array_map(fn($w) => mb_substr($w, 0, 1), array_slice($nav_words, 0, 2))));
+$nav_h = fn($v) => htmlspecialchars((string) $v, ENT_QUOTES, "UTF-8");
+?>
 <!-- Navbar -->
 <nav class="moodle-navbar">
     <button type="button" class="nav-icon-btn" id="drawerOpen" aria-controls="drawer" aria-expanded="false" aria-label="Open navigation">
@@ -14,8 +23,8 @@
         </a>
 
         <div class="dropdown">
-            <button class="user-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <span class="avatar">ET</span>
+            <button class="user-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Account menu for <?= $nav_h($nav_name) ?>">
+                <span class="avatar"><?= $nav_h($nav_initials) ?></span>
                 <i class="fas fa-chevron-down caret"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
@@ -23,7 +32,12 @@
                 <li>
                     <hr class="dropdown-divider">
                 </li>
-                <li><a class="dropdown-item" href="#"><i class="fas fa-sign-out me-2"></i>Logout</a></li>
+                <li>
+                    <form method="post" action="/admin/logout.php" class="m-0">
+                        <input type="hidden" name="csrf" value="<?= $nav_h(auth_csrf_token()) ?>">
+                        <button type="submit" class="dropdown-item"><i class="fas fa-sign-out me-2"></i>Logout</button>
+                    </form>
+                </li>
             </ul>
         </div>
     </div>

@@ -1,5 +1,6 @@
 <?php
-session_start();
+// Admins only: signs in through Moodle and starts the session (replaces session_start()).
+require_once __DIR__ . "/includes/guard.php";
 require_once __DIR__ . "/../includes/react.php";
 require_once __DIR__ . "/functions/subjects.php";
 require_once __DIR__ . "/functions/subjects_export.php";

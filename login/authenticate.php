@@ -63,4 +63,10 @@ if (!$result["ok"]) {
 }
 
 auth_sign_in($result["data"], !empty($input["remember"]));
-respond(["ok" => true, "redirect" => auth_safe_next($input["next"] ?? null)]);
+
+// Admins who did not come from a specific page land in the admin portal.
+$redirect = auth_safe_next($input["next"] ?? null);
+if ($redirect === "/" && auth_is_admin()) {
+    $redirect = "/admin/";
+}
+respond(["ok" => true, "redirect" => $redirect]);

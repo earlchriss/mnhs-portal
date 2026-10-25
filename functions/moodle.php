@@ -77,6 +77,8 @@ function moodle_authenticate(string $username, string $password): array
         "username" => (string) ($info["data"]["username"] ?? $username),
         "name" => trim((string) ($info["data"]["fullname"] ?? $username)),
         "token" => (string) $data["token"], // kept server-side in the session only
+        // Moodle site administrators may use the admin portal (see auth_require_admin())
+        "is_admin" => !empty($info["data"]["userissiteadmin"]),
     ]];
 }
 

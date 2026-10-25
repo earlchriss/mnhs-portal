@@ -1,9 +1,11 @@
 <?php
-session_start();
+// Admins only: signs in through Moodle and starts the session (replaces session_start()).
+require_once __DIR__ . "/includes/guard.php";
 require_once __DIR__ . "/../includes/react.php";
 require_once __DIR__ . "/functions/subjects.php";
 require_once __DIR__ . "/functions/schedules.php";
 require_once __DIR__ . "/functions/moodle_teachers.php";
+require_once __DIR__ . "/functions/students.php";
 require_once __DIR__ . "/../functions/redis_cache.php";
 
 $term = "1st Semester, AY 2026-2027";
@@ -15,7 +17,10 @@ $teachers = [];
 $sections = [];
 $rooms = [];
 $schedules = [];
+$students = [];         // registered students (students table, see functions/students.php)
+$student_sections = []; // [student id => section name]
 $load_error = null; // shown as a banner on the page
+$student_warning = null; // students tables missing or unreadable: the rest of the page still works
 $teacher_warning = null; // LMS problem: the page still works with the teachers saved earlier
 
 try {
@@ -46,6 +51,15 @@ try {
     $load_error = "Could not load the schedule from the database: " . $e->getMessage();
 }
 
+// Students are loaded on their own so a problem here never hides the schedules
+try {
+    $students = students_registered();
+    $student_sections = students_assignments();
+} catch (Throwable $e) {
+    error_log("Student load failed: " . $e->getMessage());
+    $student_warning = "Could not load the students (have you run students.sql?): " . $e->getMessage();
+}
+
 // 30-minute time slots from 7:00 AM to 6:00 PM
 $slots = [];
 for ($m = 7 * 60; $m <= 18 * 60; $m += 30) {
@@ -67,6 +81,9 @@ $section_errors = [];
 $room_errors = [];
 $old_section_name = "";
 $old_room_name = "";
+$student_errors = [];      // errors for the "Assign students" form
+$old_student_section = "";
+$old_student_ids = [];
 
 /* ---------- Handle POST (before any output so we can redirect) ---------- */
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
@@ -126,6 +143,31 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         } else {
             $room_errors = $modal_errors;
             $old_room_name = $name;
+        }
+    } elseif ($action === "assign_students") {
+        $old_student_section = (string) ($_POST["student_section"] ?? "");
+        $old_student_ids = array_values(array_unique(array_map("intval", (array) ($_POST["student_ids"] ?? []))));
+
+        if (!in_array($old_student_section, $sections, true)) {
+            $student_errors[] = "Choose a section for the students.";
+        }
+        if (!$old_student_ids) {
+            $student_errors[] = "Select at least one student.";
+        } elseif (array_diff($old_student_ids, array_column($students, "id"))) {
+            $student_errors[] = "One of the selected students is not registered.";
+        }
+
+        if (!$student_errors) {
+            try {
+                students_assign($old_student_ids, $old_student_section);
+                $count = count($old_student_ids);
+                $_SESSION["flash"] = ["success", $count . ($count === 1 ? " student" : " students") . " assigned to " . $old_student_section . "."];
+                header("Location: " . $_SERVER["REQUEST_URI"]);
+                exit;
+            } catch (Throwable $e) {
+                error_log("Student assign failed: " . $e->getMessage());
+                $student_errors[] = "Could not assign the students: " . $e->getMessage();
+            }
         }
     } elseif ($action === "assign") {
         $old = [
@@ -207,7 +249,7 @@ foreach ($schedules as $s) {
 }
 
 // Keep our data safe: included files must not overwrite these variables
-$_page_data = compact("subjects", "teachers", "sections", "rooms", "schedules", "shown", "load_error");
+$_page_data = compact("subjects", "teachers", "sections", "rooms", "schedules", "shown", "load_error", "students", "student_sections");
 include "includes/header.php";
 include "includes/navbar.php";
 extract($_page_data);
@@ -217,6 +259,13 @@ if ($load_error) {
     echo '<div class="container-xl mt-3"><div class="alert alert-danger" role="alert">'
         . '<div class="fw-semibold">Something went wrong</div>'
         . '<div class="small">' . htmlspecialchars($load_error, ENT_QUOTES, "UTF-8") . '</div>'
+        . '</div></div>';
+}
+
+if ($student_warning) {
+    echo '<div class="container-xl mt-3"><div class="alert alert-warning" role="alert">'
+        . '<div class="fw-semibold">Students</div>'
+        . '<div class="small">' . htmlspecialchars($student_warning, ENT_QUOTES, "UTF-8") . '</div>'
         . '</div></div>';
 }
 
@@ -251,6 +300,11 @@ react_mount("admin-schedule", [
     "sectionsUsed" => $sections_used,
     "teachersUsed" => $teachers_used,
     "weeklyHours" => $weekly_hours,
+    "students" => $students,
+    "studentSections" => (object) $student_sections,
+    "studentErrors" => $student_errors,
+    "oldStudentSection" => $old_student_section,
+    "oldStudentIds" => $old_student_ids,
 ]);
 react_assets();
 ?>

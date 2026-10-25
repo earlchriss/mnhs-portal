@@ -1,5 +1,6 @@
 <?php
-session_start();
+// Admins only: signs in through Moodle and starts the session (replaces session_start()).
+require_once __DIR__ . "/includes/guard.php";
 require_once __DIR__ . "/functions/admin_guard.php";
 admin_require(); // before anything else: this page can create and delete real accounts
 require_once __DIR__ . "/functions/users.php";

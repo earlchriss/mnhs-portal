@@ -1,7 +1,11 @@
 <?php
-// Session-based sign-in for the student portal. Credentials are verified
-// against Moodle (see moodle_authenticate() in moodle.php); only the student's
-// id, username and name are kept in the session.
+// Session-based sign-in for the student portal AND the admin portal. Credentials are
+// verified against Moodle (see moodle_authenticate() in moodle.php); only the user's
+// id, username, name and whether they are a site administrator are kept in the session.
+//
+// Admin = a Moodle site administrator (Moodle reports this as "userissiteadmin").
+// Optional extra: set the environment variable ADMIN_USERNAMES (comma separated,
+// e.g. "admin,jdelacruz") to also treat those Moodle usernames as admins.
 require_once __DIR__ . "/cache.php";
 if (cache_redis()) {
     ini_set("session.save_handler", "redis");
@@ -120,14 +124,154 @@ function auth_register_failure(): void
     }
 }
 
+/** Usernames that are always admins: ADMIN_USERNAMES as an environment variable, Apache SetEnv, or a PHP constant. */
+function auth_admin_usernames(): array
+{
+    $raw = getenv("ADMIN_USERNAMES") ?: ($_SERVER["ADMIN_USERNAMES"] ?? (defined("ADMIN_USERNAMES") ? ADMIN_USERNAMES : ""));
+    return array_values(array_filter(array_map("trim", explode(",", strtolower((string) $raw)))));
+}
+
+/**
+ * Ask Moodle who this token belongs to (core_webservice_get_site_info).
+ * Returns [info array|null, error message|null]. Never throws.
+ */
+function auth_fetch_site_info(string $token): array
+{
+    // Preferred: the portal's own Moodle client (same certificates and settings as the login)
+    if (function_exists("moodle_get_json")) {
+        $result = moodle_get_json("core_webservice_get_site_info", [], $token);
+        if (!empty($result["ok"]) && is_array($result["data"] ?? null)) {
+            return [$result["data"], null];
+        }
+        return [null, (string) ($result["message"] ?? "Moodle did not answer.")];
+    }
+
+    if (!function_exists("moodle_site_base")) {
+        return [null, "moodle_site_base() is not available (functions/moodle.php was not loaded)."];
+    }
+    try {
+        $url = rtrim(moodle_site_base(), "/") . "/webservice/rest/server.php";
+        $body = http_build_query([
+            "wstoken" => $token,
+            "wsfunction" => "core_webservice_get_site_info",
+            "moodlewsrestformat" => "json",
+        ]);
+
+        if (function_exists("curl_init")) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $body,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 8,
+            ]);
+            $raw = curl_exec($ch);
+            $curl_error = curl_error($ch);
+            curl_close($ch);
+            if ($raw === false) {
+                return [null, "Could not reach Moodle at " . $url . ": " . $curl_error];
+            }
+        } else {
+            $raw = @file_get_contents($url, false, stream_context_create(["http" => [
+                "method" => "POST",
+                "header" => "Content-Type: application/x-www-form-urlencoded",
+                "content" => $body,
+                "timeout" => 8,
+            ]]));
+            if ($raw === false) {
+                return [null, "Could not reach Moodle at " . $url . "."];
+            }
+        }
+
+        $info = json_decode((string) $raw, true);
+        if (!is_array($info)) {
+            return [null, "Moodle did not answer with JSON."];
+        }
+        if (isset($info["exception"])) {
+            return [null, "Moodle refused the request: " . ($info["errorcode"] ?? "") . " " . ($info["message"] ?? "")];
+        }
+        return [$info, null];
+    } catch (Throwable $e) {
+        return [null, $e->getMessage()];
+    }
+}
+
+/**
+ * Is this Moodle user an administrator?
+ * Uses "is_admin" from moodle_authenticate() when it provides one; otherwise asks Moodle
+ * (userissiteadmin) with the user's own token. Anything that goes wrong counts as "no".
+ */
+function auth_detect_admin(array $user): bool
+{
+    if (array_key_exists("is_admin", $user)) {
+        return (bool) $user["is_admin"];
+    }
+    if (in_array(strtolower((string) ($user["username"] ?? "")), auth_admin_usernames(), true)) {
+        return true;
+    }
+
+    $token = (string) ($user["token"] ?? "");
+    if ($token === "") {
+        error_log("Admin check: no Moodle token for " . ($user["username"] ?? "?") . " (moodle_authenticate() returned none).");
+        return false;
+    }
+
+    [$info, $error] = auth_fetch_site_info($token);
+    if ($error) {
+        error_log("Admin check failed for " . ($user["username"] ?? "?") . ": " . $error);
+        return false;
+    }
+    return !empty($info["userissiteadmin"]);
+}
+
+/** Is the signed-in user an administrator? */
+function auth_is_admin(): bool
+{
+    $user = auth_user();
+    return $user !== null && !empty($user["is_admin"]);
+}
+
+/**
+ * Protect an admin page. Call at the very top, before any output and before the page
+ * handles a POST. Not signed in => login page; signed in but not an admin => 403.
+ */
+function auth_require_admin(): void
+{
+    auth_require_login();
+
+    // Signed in before the admin flag existed: work it out once from the saved token
+    $user = auth_user();
+    if ($user !== null && !array_key_exists("is_admin", $user)) {
+        $_SESSION[AUTH_SESSION_KEY]["is_admin"] = auth_detect_admin($user + ["token" => (string) ($_SESSION["moodle_token"] ?? "")]);
+    }
+    if (auth_is_admin()) return;
+
+    http_response_code(403);
+    header("Cache-Control: no-store");
+    $csrf = htmlspecialchars(auth_csrf_token(), ENT_QUOTES, "UTF-8");
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
+        . '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+        . '<title>Admins only</title></head>'
+        . '<body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1rem;text-align:center">'
+        . '<h1 style="font-size:1.5rem">Admins only</h1>'
+        . '<p>Your account does not have access to the admin portal.</p>'
+        . '<p><a href="/">Back to the student portal</a></p>'
+        . '<form method="post" action="/admin/logout.php"><input type="hidden" name="csrf" value="' . $csrf . '">'
+        . '<button type="submit">Sign in with a different account</button></form>'
+        . '</body></html>';
+    exit;
+}
+
 function auth_sign_in(array $user, bool $remember): void
 {
     auth_start_session();
+    $is_admin = auth_detect_admin($user);
     session_regenerate_id(true); // prevents session fixation
     $_SESSION[AUTH_SESSION_KEY] = [
         "id" => (int) $user["id"],
         "username" => (string) $user["username"],
         "name" => (string) $user["name"],
+        "is_admin" => $is_admin,
     ];
     // The student's own Moodle token lets us submit evaluations as them.
     // It stays in the server-side session and is never sent to the browser.

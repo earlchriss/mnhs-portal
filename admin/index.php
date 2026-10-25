@@ -1,55 +1,65 @@
 <?php
+// Admins only: signs in through Moodle and starts the session.
+require_once __DIR__ . "/includes/guard.php";
+require_once __DIR__ . "/functions/students.php";
 include "includes/header.php";
 include "includes/navbar.php";
 require_once __DIR__ . "/../includes/react.php";
 
-/* ---------- Sample data (replace with database queries) ---------- */
-$admin = [
-    "first_name" => "Maria",
-    "name"       => "Maria Dela Cruz",
-    "role"       => "Evaluation Administrator",
-];
+/* ---------- Real data only ---------- */
 $term = "1st Semester, AY 2026-2027";
-$eval_open = "2026-10-01";
-$eval_deadline = "2026-11-15";
-$total_students = 842;
+
+// The signed-in administrator (from the Moodle login)
+$me = auth_user() ?: [];
+$full_name = trim((string) ($me["name"] ?? "")) ?: (string) ($me["username"] ?? "Administrator");
+$admin = [
+    "first_name" => preg_split('/\s+/', $full_name)[0],
+    "name"       => $full_name,
+    "role"       => "Administrator",
+];
+
+// Registered students (students table). A problem here shows a warning, not a broken page.
+$total_students = 0;
+$home_warning = null;
+try {
+    $total_students = count(students_registered());
+} catch (Throwable $e) {
+    error_log("Home: could not count students: " . $e->getMessage());
+    $home_warning = "Could not load the students (have you run students.sql?): " . $e->getMessage();
+}
 
 $hour = (int) date("G");
 $greeting = $hour < 12 ? "Good morning" : ($hour < 18 ? "Good afternoon" : "Good evening");
 
-// responses = submitted forms, enrolled = students who must evaluate, avg = average rating (1-5) or null
-$faculty_stats = [
-    ["code" => "IT 301", "title" => "Web Systems and Technologies",         "instructor" => "Prof. M. Reyes",  "responses" => 38, "enrolled" => 42, "avg" => 4.52],
-    ["code" => "IT 302", "title" => "Information Assurance and Security",   "instructor" => "Prof. L. Santos", "responses" => 27, "enrolled" => 40, "avg" => 4.18],
-    ["code" => "IT 303", "title" => "Systems Integration and Architecture", "instructor" => "Prof. J. Cruz",   "responses" => 15, "enrolled" => 41, "avg" => 3.94],
-    ["code" => "IT 304", "title" => "Capstone Project 1",                   "instructor" => "Prof. A. Garcia", "responses" => 9,  "enrolled" => 38, "avg" => 4.30],
-    ["code" => "GE 105", "title" => "Ethics",                               "instructor" => "Prof. R. Lim",    "responses" => 0,  "enrolled" => 45, "avg" => null],
-];
-
-// Student identities are not shown, to keep evaluations confidential
-$recent = [
-    ["subject" => "IT 301 – Web Systems and Technologies",       "section" => "IT-3A", "time" => "5 minutes ago"],
-    ["subject" => "Library Services",                            "section" => "IT-2B", "time" => "22 minutes ago"],
-    ["subject" => "IT 302 – Information Assurance and Security", "section" => "IT-3A", "time" => "1 hour ago"],
-    ["subject" => "Campus Facilities",                           "section" => "CS-1C", "time" => "3 hours ago"],
-];
+// Evaluation results are not read from anywhere yet: these stay empty until they are
+// connected to the ratings (LMS Feedback) data, so nothing made-up is shown.
+$faculty_stats = []; // each: code, title, instructor, responses, enrolled, avg (or null)
+$recent = [];        // each: subject, section, time
+$eval_open = null;      // "Y-m-d" when the evaluation period opens
+$eval_deadline = null;  // "Y-m-d" when it closes
 
 /* ---------- Summary numbers ---------- */
 $submitted = array_sum(array_column($faculty_stats, "responses"));
 $expected = array_sum(array_column($faculty_stats, "enrolled"));
 $completion = $expected ? round($submitted / $expected * 100) : 0;
-$days_left = (int) ceil((strtotime($eval_deadline) - strtotime(date("Y-m-d"))) / 86400);
 
-$period_total = max(1, strtotime($eval_deadline) - strtotime($eval_open));
-$period_elapsed = min($period_total, max(0, strtotime(date("Y-m-d")) - strtotime($eval_open)));
-$period_percent = round($period_elapsed / $period_total * 100);
-$period_open = $days_left >= 0;
+$today_ts = strtotime(date("Y-m-d"));
+$days_left = 0;
+$period_percent = 0;
+$period_open = false;
+if ($eval_open && $eval_deadline) {
+    $days_left = (int) ceil((strtotime($eval_deadline) - $today_ts) / 86400);
+    $period_total = max(1, strtotime($eval_deadline) - strtotime($eval_open));
+    $period_elapsed = min($period_total, max(0, $today_ts - strtotime($eval_open)));
+    $period_percent = round($period_elapsed / $period_total * 100);
+    $period_open = $days_left >= 0;
+}
 
-function response_status($pct)
-{
-    if ($pct >= 75) return ["On track", "success"];
-    if ($pct >= 40) return ["In progress", "warning"];
-    return ["Low response", "danger"];
+if ($home_warning) {
+    echo '<div class="container-xl mt-3"><div class="alert alert-warning" role="alert">'
+        . '<div class="fw-semibold">Students</div>'
+        . '<div class="small">' . htmlspecialchars($home_warning, ENT_QUOTES, "UTF-8") . '</div>'
+        . '</div></div>';
 }
 
 react_mount("admin-home", [
@@ -64,8 +74,8 @@ react_mount("admin-home", [
     "daysLeft" => $days_left,
     "periodOpen" => $period_open,
     "periodPercent" => $period_percent,
-    "evalOpen" => date("M j", strtotime($eval_open)),
-    "evalDeadline" => date("M j, Y", strtotime($eval_deadline)),
+    "evalOpen" => $eval_open ? date("M j", strtotime($eval_open)) : "",
+    "evalDeadline" => $eval_deadline ? date("M j, Y", strtotime($eval_deadline)) : "",
     "facultyStats" => $faculty_stats,
     "recent" => $recent,
 ]);
