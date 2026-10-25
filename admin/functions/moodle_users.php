@@ -9,14 +9,42 @@
 // and the token's user must hold the capabilities moodle/user:create,
 // moodle/user:update and moodle/user:delete.
 
+/*
+ * ---------------------------------------------------------------------------
+ * MOODLE SETTINGS: the one place to put them when the host has no env vars.
+ * A real server environment variable with the same name always wins.
+ *
+ *   MOODLE_WSTOKEN   the web-service token from Moodle
+ *                    (Site administration > Server > Web services > Manage tokens)
+ *   MOODLE_REST_URL  the Moodle REST address
+ *   MOODLE_CA_BUNDLE optional path to a CA certificate file, only if curl
+ *                    reports a certificate error
+ *
+ * Do not commit the real token to a public repository.
+ * ---------------------------------------------------------------------------
+ */
+const MOODLE_LOCAL_SETTINGS = [
+    "MOODLE_WSTOKEN"   => "e29e7c805ffd59bbce0a42530c68045b",   // <-- paste your token between the quotes
+    "MOODLE_REST_URL"  => "https://lms.mabolonationalhs.me/webservice/rest/server.php",
+    "MOODLE_CA_BUNDLE" => "",
+];
+
+/** A Moodle setting: the environment variable if set, otherwise the value above. */
+function moodle_setting(string $name): string
+{
+    $value = getenv($name);
+    if ($value !== false && $value !== "") return (string) $value;
+    return trim((string) (MOODLE_LOCAL_SETTINGS[$name] ?? ""));
+}
+
 /** Is the server set up to talk to Moodle? ["ok" => bool, "message" => string] */
 function moodle_users_ready(): array
 {
     if (!function_exists("curl_init")) {
         return ["ok" => false, "message" => "The PHP curl extension is not enabled, so accounts cannot be created in LMS."];
     }
-    if (!getenv("MOODLE_WSTOKEN")) {
-        return ["ok" => false, "message" => "MOODLE_WSTOKEN is not set on the server, so accounts cannot be created in LMS."];
+    if (moodle_setting("MOODLE_WSTOKEN") === "") {
+        return ["ok" => false, "message" => "MOODLE_WSTOKEN is not set. Paste the token into MOODLE_LOCAL_SETTINGS in admin/functions/moodle_users.php (or set it as a server environment variable), so accounts can be created in LMS."];
     }
     return ["ok" => true, "message" => ""];
 }
@@ -30,9 +58,9 @@ function moodle_users_call(string $function, array $params): array
     $ready = moodle_users_ready();
     if (!$ready["ok"]) return ["ok" => false, "message" => $ready["message"], "code" => "notready"];
 
-    $baseUrl = getenv("MOODLE_REST_URL") ?: "https://lms.mabolonationalhs.me/webservice/rest/server.php";
+    $baseUrl = moodle_setting("MOODLE_REST_URL") ?: "https://lms.mabolonationalhs.me/webservice/rest/server.php";
     $body = http_build_query(array_merge($params, [
-        "wstoken" => getenv("MOODLE_WSTOKEN"),
+        "wstoken" => moodle_setting("MOODLE_WSTOKEN"),
         "wsfunction" => $function,
         "moodlewsrestformat" => "json",
     ]));
@@ -48,7 +76,7 @@ function moodle_users_call(string $function, array $params): array
         CURLOPT_NOSIGNAL => true,
         CURLOPT_HTTPHEADER => ["Accept: application/json"],
     ];
-    $caBundle = getenv("MOODLE_CA_BUNDLE") ?: "C:\\xampp\\apache\\bin\\curl-ca-bundle.crt";
+    $caBundle = moodle_setting("MOODLE_CA_BUNDLE") ?: "C:\\xampp\\apache\\bin\\curl-ca-bundle.crt";
     if (is_file($caBundle)) $options[CURLOPT_CAINFO] = $caBundle;
     curl_setopt_array($request, $options);
     $raw = curl_exec($request);
@@ -76,7 +104,7 @@ function moodle_users_call(string $function, array $params): array
         $code = (string) ($data["errorcode"] ?? "exception");
         $message = (string) ($data["message"] ?? "LMS rejected the request.");
         if ($code === "invalidtoken") {
-            $message = "The LMS web-service token is invalid or expired. Update MOODLE_WSTOKEN and restart Apache.";
+            $message = "The LMS web-service token is invalid or expired. Update MOODLE_WSTOKEN in admin/functions/moodle_users.php.";
         } elseif ($code === "accessexception" || stripos($message, "access control") !== false) {
             $message = "LMS refused {$function}. Add it to the web-service the token belongs to, and make sure the token's user may manage accounts.";
         } elseif ($code === "invalidparameter" || $code === "invalidparameterexception") {
