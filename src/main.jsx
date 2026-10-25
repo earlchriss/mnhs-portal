@@ -8,6 +8,7 @@ import Assignments from "./pages/Assignments.jsx";
 import Login from "./pages/Login.jsx";
 import AdminSubjects from "./pages/AdminSubjects.jsx";
 import AdminUsers from "./pages/AdminUsers.jsx";
+import AdminFaculty from "./pages/AdminFaculty.jsx";
 
 // Map the page name sent by PHP (data-page) to a React component.
 // Add new pages here (Schedule, EGrade, ...).
@@ -21,6 +22,7 @@ const pages = {
   login: Login,
   "admin-subjects": AdminSubjects,
   "admin-users": AdminUsers,
+  "admin-faculty": AdminFaculty,
 };
 
 const mount = document.getElementById("root");

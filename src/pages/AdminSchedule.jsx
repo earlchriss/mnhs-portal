@@ -1,8 +1,21 @@
+import { useEffect, useRef } from "react";
+
 function formatTime(value) {
   const [hour, minute] = value.split(":").map(Number);
   const suffix = hour >= 12 ? "PM" : "AM";
   return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
+
+// Short labels shown on screen. PHP and the database keep Mon, Tue, ... underneath.
+const DAY_LABELS = {
+  Mon: "M",
+  Tue: "T",
+  Wed: "W",
+  Thu: "TH",
+  Fri: "F",
+  Sat: "SAT",
+};
+const dayLabel = (day) => DAY_LABELS[day] || day;
 
 function SummaryCard({ icon, tone, value, label }) {
   return (
@@ -18,6 +31,114 @@ function SummaryCard({ icon, tone, value, label }) {
             <div className="fs-4 fw-bold lh-1">{value}</div>
             <div className="small text-body-secondary">{label}</div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Bootstrap modal: add a section or a room (posts to schedule.php) ---------- */
+function AddNameModal({
+  id,
+  title,
+  label,
+  placeholder,
+  action,
+  maxLength,
+  csrf,
+  errors,
+  oldName,
+}) {
+  const modalRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const element = modalRef.current;
+    if (!element) return;
+
+    // Put the cursor in the field every time the modal finishes opening
+    const focusInput = () => inputRef.current && inputRef.current.focus();
+    element.addEventListener("shown.bs.modal", focusInput);
+
+    // After a failed save PHP sends the errors back: reopen the modal to show them
+    if (errors.length && window.bootstrap) {
+      window.bootstrap.Modal.getOrCreateInstance(element).show();
+    }
+
+    return () => element.removeEventListener("shown.bs.modal", focusInput);
+  }, []);
+
+  return (
+    <div
+      className="modal fade"
+      id={id}
+      tabIndex="-1"
+      aria-labelledby={`${id}Title`}
+      aria-hidden="true"
+      ref={modalRef}
+    >
+      <div className="modal-dialog modal-dialog-centered">
+        <div className="modal-content border-0 shadow">
+          <form method="post">
+            <input type="hidden" name="csrf" value={csrf} />
+            <input type="hidden" name="action" value={action} />
+
+            <div className="modal-header">
+              <h2 className="modal-title h5 fw-bold" id={`${id}Title`}>
+                {title}
+              </h2>
+              <button
+                type="button"
+                className="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Close"
+              ></button>
+            </div>
+
+            <div className="modal-body">
+              {errors.length > 0 && (
+                <div className="alert alert-danger small" role="alert">
+                  <div className="fw-semibold mb-1">
+                    <i className="fas fa-circle-exclamation me-1"></i>
+                    Could not save
+                  </div>
+                  <ul className="mb-0 ps-3">
+                    {errors.map((error) => (
+                      <li key={error}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <label htmlFor={`${id}Name`} className="form-label fw-semibold">
+                {label}
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                id={`${id}Name`}
+                name="name"
+                defaultValue={oldName}
+                maxLength={maxLength}
+                placeholder={placeholder}
+                autoComplete="off"
+                required
+                ref={inputRef}
+              />
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-outline-secondary"
+                data-bs-dismiss="modal"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary">
+                <i className="fas fa-floppy-disk me-1"></i>Save
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -93,9 +214,22 @@ function AssignmentForm({
               </select>
             </div>
             <div className="mb-3">
-              <label htmlFor="section" className="form-label fw-semibold">
-                Section (students)
-              </label>
+              <div className="d-flex align-items-center justify-content-between mb-2">
+                <label
+                  htmlFor="section"
+                  className="form-label fw-semibold mb-0"
+                >
+                  Section (students)
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-link btn-sm p-0 text-decoration-none"
+                  data-bs-toggle="modal"
+                  data-bs-target="#addSectionModal"
+                >
+                  <i className="fas fa-plus me-1"></i>Add section
+                </button>
+              </div>
               <select
                 className="form-select"
                 id="section"
@@ -125,7 +259,7 @@ function AssignmentForm({
                       className="btn btn-outline-primary btn-sm"
                       htmlFor={`day-${day}`}
                     >
-                      {day}
+                      {dayLabel(day)}
                     </label>
                   </span>
                 ))}
@@ -170,9 +304,19 @@ function AssignmentForm({
               </div>
             </div>
             <div className="mb-4">
-              <label htmlFor="room" className="form-label fw-semibold">
-                Room
-              </label>
+              <div className="d-flex align-items-center justify-content-between mb-2">
+                <label htmlFor="room" className="form-label fw-semibold mb-0">
+                  Room
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-link btn-sm p-0 text-decoration-none"
+                  data-bs-toggle="modal"
+                  data-bs-target="#addRoomModal"
+                >
+                  <i className="fas fa-plus me-1"></i>Add room
+                </button>
+              </div>
               <select
                 className="form-select"
                 id="room"
@@ -287,7 +431,9 @@ function ScheduleViewer({
                         </span>
                       )}
                     </td>
-                    <td className="text-nowrap">{schedule.days.join(" / ")}</td>
+                    <td className="text-nowrap">
+                      {schedule.days.map(dayLabel).join(" ")}
+                    </td>
                     <td className="text-nowrap">
                       {formatTime(schedule.start)} - {formatTime(schedule.end)}
                     </td>
@@ -329,10 +475,6 @@ function ScheduleViewer({
             </tbody>
           </table>
         </div>
-        <div className="card-footer bg-body small text-body-secondary">
-          {shown.length} schedule{shown.length === 1 ? "" : "s"} shown. Entries
-          are sorted by day and start time.
-        </div>
       </div>
     </section>
   );
@@ -353,6 +495,10 @@ export default function AdminSchedule({
   errors,
   old,
   csrf,
+  sectionErrors = [],
+  roomErrors = [],
+  oldSectionName = "",
+  oldRoomName = "",
   totalEntries,
   sectionsUsed,
   teachersUsed,
@@ -366,19 +512,6 @@ export default function AdminSchedule({
           <p className="text-body-secondary mb-0">{term}</p>
         </div>
       </div>
-      <div
-        className="alert alert-info small d-flex align-items-start gap-2"
-        role="note"
-      >
-        <i className="fas fa-circle-info mt-1"></i>
-        <div>
-          This page uses <strong>dummy data</strong> kept in your session.
-          Changes you make here are not saved to a database yet.
-          <a href="?reset=1" className="alert-link ms-1">
-            Reset sample data
-          </a>
-        </div>
-      </div>
       {flash && (
         <div
           className={`alert alert-${flash[0]} d-flex align-items-center gap-2`}
@@ -388,32 +521,6 @@ export default function AdminSchedule({
           {flash[1]}
         </div>
       )}
-      <section className="row g-3 mb-4" aria-label="Summary">
-        <SummaryCard
-          icon="fa-calendar-days"
-          tone="primary"
-          value={totalEntries}
-          label="Schedule entries"
-        />
-        <SummaryCard
-          icon="fa-users"
-          tone="success"
-          value={`${sectionsUsed}/${sections.length}`}
-          label="Sections scheduled"
-        />
-        <SummaryCard
-          icon="fa-chalkboard-user"
-          tone="warning"
-          value={`${teachersUsed}/${Object.keys(teachers).length}`}
-          label="Teachers assigned"
-        />
-        <SummaryCard
-          icon="fa-clock"
-          tone="info"
-          value={Number(weeklyHours.toFixed(1)).toString()}
-          label="Class hours / week"
-        />
-      </section>
       <div className="row g-4">
         <div className="col-lg-4">
           <AssignmentForm
@@ -440,6 +547,29 @@ export default function AdminSchedule({
           />
         </div>
       </div>
+
+      <AddNameModal
+        id="addSectionModal"
+        title="Add section"
+        label="Section name"
+        placeholder="e.g. IT-3C"
+        action="add_section"
+        maxLength={50}
+        csrf={csrf}
+        errors={sectionErrors}
+        oldName={oldSectionName}
+      />
+      <AddNameModal
+        id="addRoomModal"
+        title="Add room"
+        label="Room name"
+        placeholder="e.g. Room 301"
+        action="add_room"
+        maxLength={50}
+        csrf={csrf}
+        errors={roomErrors}
+        oldName={oldRoomName}
+      />
     </div>
   );
 }

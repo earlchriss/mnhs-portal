@@ -23,28 +23,15 @@ $student = [
 ];
 $term = "1st Semester, AY 2026-2027";
 
-// The evaluation forms are NOT loaded here any more. Home.jsx fetches them from
-// evaluations.php, so this page renders right away instead of waiting on Moodle.
-?>
-<script>
-    // Start that request now, while the React bundle is still downloading.
-    // Home.jsx picks this up (and falls back to its own fetch if it is missing).
-    window.__evalRequest = fetch("evaluations.php", {
-        credentials: "same-origin",
-        cache: "no-store",
-        headers: {
-            Accept: "application/json"
-        }
-    }).catch(function() {
-        return null;
-    });
-</script>
-<?php
+$forms = moodle_evaluation_forms(isset($_GET["fresh"]));
+$initial = $forms["ok"] ? $forms["data"] : null; // ["faculty" => [...], "services" => [...]]
+
 react_mount("home", [
     "student" => $student,
     "term" => $term,
     "today" => $now->format("l, F j, Y"),
     "greeting" => $greeting,
+    "initial" => $initial,
 ]);
 ?>
 <script>
@@ -59,7 +46,7 @@ react_mount("home", [
                     '<code>"home"</code> in <code>src/main.jsx</code>, run <code>npm run build</code>, ' +
                     'then hard refresh (Ctrl+F5).</div></div>';
             }
-        }, 1000);
+        });
     });
 </script>
 <?php

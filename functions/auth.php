@@ -2,7 +2,18 @@
 // Session-based sign-in for the student portal. Credentials are verified
 // against Moodle (see moodle_authenticate() in moodle.php); only the student's
 // id, username and name are kept in the session.
-
+require_once __DIR__ . "/cache.php";
+if (cache_redis()) {
+    ini_set("session.save_handler", "redis");
+    session_save_path("tcp://" . (getenv("REDIS_HOST") ?: "127.0.0.1") . ":" . (getenv("REDIS_PORT") ?: 6379));
+} else {
+    ini_set("session.save_handler", "files");
+    $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "student_portal_sessions";
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0700, true);
+    }
+    session_save_path($dir);
+}
 const AUTH_SESSION_KEY = "student_user";
 const AUTH_REMEMBER_SECONDS = 2592000; // 30 days
 const AUTH_MAX_FAILURES = 5;
@@ -29,6 +40,14 @@ function auth_cookie_params(int $lifetime): array
 function auth_start_session(): void
 {
     if (session_status() === PHP_SESSION_ACTIVE) return;
+
+    $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "student_portal_sessions";
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0700, true);
+    }
+    ini_set("session.save_handler", "files");
+    session_save_path($dir);
+
     session_name("student_portal");
     session_set_cookie_params(auth_cookie_params(0));
     ini_set("session.gc_maxlifetime", (string) AUTH_REMEMBER_SECONDS);

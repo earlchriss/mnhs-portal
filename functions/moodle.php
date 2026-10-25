@@ -139,40 +139,68 @@ function moodle_notifications(int $limit = 20): array
     if (!$user["ok"]) return $user;
     $userId = $user["data"];
 
-    $result = moodle_get_json("message_popup_get_popup_notifications", [
-        "useridto" => $userId,
-        "newestfirst" => 1,
-        "limit" => $limit,
-        "offset" => 0,
-    ]);
-    if (!$result["ok"]) {
-        if (stripos($result["message"], "access control") !== false) {
-            return ["ok" => false, "message" => "Enable message_popup_get_popup_notifications for the Moodle web-service token."];
-        }
-        return $result;
+    $token = auth_user_token();
+    if (!$token) {
+        return ["ok" => false, "message" => "Please sign out and sign in again to continue."];
     }
 
-    $items = [];
-    foreach ($result["data"]["notifications"] ?? [] as $n) {
-        $text = trim(strip_tags($n["smallmessage"] ?? $n["fullmessage"] ?? ""));
-        $url = $n["contexturl"] ?? null;
-        if ($url && !preg_match('#^https?://#i', $url)) {
-            $url = null; // only ever link to http(s) URLs
+    $call = fn(int $read, int $num) => [
+        "function" => "core_message_get_messages",
+        "params" => [
+            "useridto" => $userId,
+            "useridfrom" => 0,
+            "type" => "notifications",
+            "read" => $read,
+            "newestfirst" => 1,
+            "limitfrom" => 0,
+            "limitnum" => $num,
+        ],
+        "token" => $token,
+    ];
+    $results = moodle_get_json_multi([
+        "unread" => $call(0, 100),
+        "read" => $call(1, max(1, $limit)),
+    ]);
+
+    foreach (["unread", "read"] as $part) {
+        if (!$results[$part]["ok"]) {
+            $message = (string) ($results[$part]["message"] ?? "");
+            if (stripos($message, "access control") !== false) {
+                return ["ok" => false, "message" => "Enable core_message_get_messages for the Moodle service used at sign-in (moodle_mobile_app by default)."];
+            }
+            return $results[$part];
         }
-        $created = (int) ($n["timecreated"] ?? 0);
-        $items[] = [
-            "id" => (int) $n["id"],
-            "subject" => trim(strip_tags($n["subject"] ?? "Notification")),
-            "text" => $text,
-            "url" => $url,
-            "read" => !empty($n["read"]),
-            "time" => $created ? moodle_format_time($created, "M j, Y g:i A") : "",
-        ];
     }
+
+    $clean = fn($s) => trim(html_entity_decode(strip_tags((string) $s), ENT_QUOTES | ENT_HTML5, "UTF-8"));
+
+    $items = [];
+    foreach (["unread" => false, "read" => true] as $part => $isRead) {
+        foreach ($results[$part]["data"]["messages"] ?? [] as $n) {
+            $text = $clean($n["smallmessage"] ?? "") ?: $clean($n["fullmessage"] ?? "") ?: $clean($n["text"] ?? "");
+            $url = $n["contexturl"] ?? null;
+            if ($url && !preg_match('#^https?://#i', $url)) {
+                $url = null; // only ever link to http(s) URLs
+            }
+            $created = (int) ($n["timecreated"] ?? 0);
+            $items[] = [
+                "id" => (int) $n["id"],
+                "subject" => $clean($n["subject"] ?? "") ?: "Notification",
+                "text" => $text,
+                "url" => $url,
+                "read" => $isRead,
+                "time" => $created ? moodle_format_time($created, "M j, Y g:i A") : "",
+                "_ts" => $created,
+            ];
+        }
+    }
+
+    usort($items, fn($a, $b) => $b["_ts"] <=> $a["_ts"]);
     $unread = count(array_filter($items, fn($i) => !$i["read"]));
-    if (isset($result["data"]["unreadcount"])) {
-        $unread = (int) $result["data"]["unreadcount"];
-    }
+    $items = array_slice($items, 0, $limit);
+    foreach ($items as &$item) unset($item["_ts"]);
+    unset($item);
+
     return ["ok" => true, "data" => ["notifications" => $items, "unread" => $unread]];
 }
 
@@ -187,7 +215,7 @@ function moodle_mark_notifications_read(?int $id): array
     $userId = $user["data"];
 
     if ($id === null) {
-        return moodle_get_json("core_message_mark_all_notifications_as_read", [
+        return moodle_user_json("core_message_mark_all_notifications_as_read", [
             "useridto" => $userId,
             "useridfrom" => 0,
         ]);
@@ -200,7 +228,7 @@ function moodle_mark_notifications_read(?int $id): array
     if (!in_array($id, $ids, true)) {
         return ["ok" => false, "message" => "Notification not found."];
     }
-    return moodle_get_json("core_message_mark_notification_read", [
+    return moodle_user_json("core_message_mark_notification_read", [
         "notificationid" => $id,
         "timeread" => time(),
     ]);
@@ -375,13 +403,16 @@ function moodle_decode_response($body, string $error, int $status): array
         return ["ok" => false, "message" => "Moodle is temporarily unavailable. Assignments could not be synchronized."];
     }
     $data = json_decode($body, true);
-    if (!is_array($data) || isset($data["exception"])) {
+    if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
+        return ["ok" => false, "message" => "Moodle returned an invalid response (HTTP {$status})."];
+    }
+    if (is_array($data) && isset($data["exception"])) {
         if (($data["errorcode"] ?? "") === "invalidtoken") {
             return ["ok" => false, "message" => "The Moodle web-service token is invalid or expired. Update MOODLE_WSTOKEN in Apache and restart Apache."];
         }
         return ["ok" => false, "message" => $data["message"] ?? "Moodle returned an invalid response (HTTP {$status})."];
     }
-    return ["ok" => true, "data" => $data];
+    return ["ok" => true, "data" => $data]; // may be a bool/int for simple functions
 }
 
 function moodle_get_json(string $function, array $params, ?string $tokenOverride = null): array
@@ -672,20 +703,12 @@ function moodle_change_fingerprint(): array
     // The newest Moodle notification. Best effort.
     $latest = null;
     $unread = 0;
-    $notes = moodle_user_json("message_popup_get_popup_notifications", [
-        "useridto" => $userId,
-        "newestfirst" => 1,
-        "limit" => 1,
-        "offset" => 0,
-    ]);
+    $notes = moodle_notifications(1);
     if ($notes["ok"]) {
-        $unread = (int) ($notes["data"]["unreadcount"] ?? 0);
+        $unread = (int) $notes["data"]["unread"];
         $first = $notes["data"]["notifications"][0] ?? null;
         if ($first) {
-            $latest = [
-                "id" => (int) ($first["id"] ?? 0),
-                "subject" => trim(strip_tags((string) ($first["subject"] ?? "Notification"))),
-            ];
+            $latest = ["id" => (int) $first["id"], "subject" => $first["subject"]];
         }
     }
 
@@ -698,8 +721,46 @@ function moodle_change_fingerprint(): array
     moodle_cache_set("pulse:$userId", $data, MOODLE_PULSE_TTL);
     return ["ok" => true, "data" => $data];
 }
+const MOODLE_FORMS_TTL = 30; // seconds: short, because "submitted" status changes
 
-function moodle_evaluation_forms(): array
+/** Evaluation forms for the signed-in student, cached per student in Redis. */
+function moodle_evaluation_forms(bool $fresh = false): array
+{
+    $user = moodle_resolve_user_id();
+    if (!$user["ok"]) return $user;
+    $key = "forms:" . $user["data"];
+
+    if (!$fresh) {
+        $cached = moodle_cache_get($key);
+        if ($cached !== null) return ["ok" => true, "data" => $cached];
+    }
+
+    $result = moodle_evaluation_forms_uncached();
+    if ($result["ok"]) {
+        moodle_cache_set($key, $result["data"], MOODLE_FORMS_TTL); // never cache errors
+    }
+    return $result;
+}
+
+/**
+ * Drop a student's cached feed, forms and change fingerprint. Call it right
+ * after the student submits an evaluation, so the page shows "completed"
+ * immediately instead of waiting for the cache to expire.
+ */
+function moodle_forget_student(int $userId): void
+{
+    $redis = moodle_redis();
+    foreach (["forms:$userId", "feed:$userId", "pulse:$userId"] as $key) {
+        if ($redis) {
+            try {
+                $redis->del(MOODLE_CACHE_PREFIX . $key);
+            } catch (Throwable $e) {
+            }
+        }
+        @unlink(moodle_cache_file($key));
+    }
+}
+function moodle_evaluation_forms_uncached(): array
 {
     $user = moodle_resolve_user_id();
     if (!$user["ok"]) return $user;

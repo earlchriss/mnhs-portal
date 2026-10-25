@@ -298,10 +298,24 @@ export default function AdminSubjects({
   scheduleKnown,
   flash,
   errors,
+  loadError,
   old,
   csrf,
 }) {
   const [query, setQuery] = useState("");
+  // Grade filter for the Excel export (the grade is the number at the end of the title).
+  const [exportGrade, setExportGrade] = useState("");
+  const gradeOptions = useMemo(() => {
+    const counts = {};
+    subjects.forEach((subject) => {
+      const match = subject.title.match(/(\d+)\s*$/);
+      if (match) counts[match[1]] = (counts[match[1]] || 0) + 1;
+    });
+    return Object.keys(counts)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map((grade) => ({ grade, count: counts[grade] }));
+  }, [subjects]);
   // After a failed save, PHP sends the typed values back: reopen the form with them.
   const [modal, setModal] = useState(() =>
     errors.length
@@ -355,9 +369,47 @@ export default function AdminSubjects({
             {term} &middot; Add, edit and view every subject offered.
           </p>
         </div>
-        <button type="button" className="btn btn-primary" onClick={openAdd}>
-          <i className="fas fa-plus me-1" aria-hidden="true"></i>Add subject
-        </button>
+        <div className="d-flex flex-wrap gap-2">
+          <div className="input-group w-auto">
+            <select
+              className="form-select"
+              style={{ maxWidth: "11rem" }}
+              aria-label="Grade to export"
+              value={exportGrade}
+              onChange={(event) => setExportGrade(event.target.value)}
+              disabled={subjects.length === 0}
+            >
+              <option value="">All grades</option>
+              {gradeOptions.map(({ grade, count }) => (
+                <option key={grade} value={grade}>
+                  Grade {grade} ({count})
+                </option>
+              ))}
+            </select>
+            {subjects.length > 0 ? (
+              <a
+                href={`?export=xlsx&grade=${exportGrade}`}
+                className="btn btn-outline-success"
+                title="Download an Excel file ready for Moodle's Upload courses (Category ID left blank)"
+              >
+                <i className="fas fa-file-excel me-1" aria-hidden="true"></i>
+                Export Excel
+              </a>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-outline-success"
+                disabled
+              >
+                <i className="fas fa-file-excel me-1" aria-hidden="true"></i>
+                Export Excel
+              </button>
+            )}
+          </div>
+          <button type="button" className="btn btn-primary" onClick={openAdd}>
+            <i className="fas fa-plus me-1" aria-hidden="true"></i>Add subject
+          </button>
+        </div>
       </div>
 
       {flash && (
@@ -367,6 +419,18 @@ export default function AdminSubjects({
         >
           <i className="fas fa-circle-check" aria-hidden="true"></i>
           {flash[1]}
+        </div>
+      )}
+      {loadError && (
+        <div
+          className="alert alert-danger d-flex align-items-start gap-2"
+          role="alert"
+        >
+          <i className="fas fa-circle-exclamation mt-1" aria-hidden="true"></i>
+          <div>
+            <div className="fw-semibold">Something went wrong</div>
+            <div className="small">{loadError}</div>
+          </div>
         </div>
       )}
       <div className="card border-0 shadow-sm">

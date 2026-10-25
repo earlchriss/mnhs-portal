@@ -7,23 +7,24 @@ const EVALUATIONS_URL = "evaluations.php";
  * Loads the faculty and service evaluation forms from evaluations.php.
  * Starts as soon as Home mounts. index.php may already have started the request
  * (window.__evalRequest) while the bundle was downloading; if not, fetch here.
+ *
+ * If `initial` is passed (data embedded by index.php), the forms render on the
+ * very first paint and the request only refreshes them in the background.
  */
-function useEvaluations() {
+function useEvaluations(initial) {
   const [state, setState] = useState({
-    faculty: [],
-    services: [],
-    loading: true,
+    faculty: initial?.faculty ?? [],
+    services: initial?.services ?? [],
+    ready: Boolean(initial), // true once real data (or a final error) is known
     error: "",
     signedOut: false,
   });
   const controllerRef = useRef(null);
 
-  const load = useCallback(async ({ silent = false } = {}) => {
+  const load = useCallback(async () => {
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
-
-    if (!silent) setState((s) => ({ ...s, loading: true, error: "" }));
 
     try {
       const preloaded = window.__evalRequest;
@@ -49,7 +50,7 @@ function useEvaluations() {
       if (res.status === 401) {
         setState((s) => ({
           ...s,
-          loading: false,
+          ready: true,
           signedOut: true,
           error:
             data?.message || "Your session has ended. Please sign in again.",
@@ -59,7 +60,7 @@ function useEvaluations() {
       if (!res.ok || !data?.ok) {
         setState((s) => ({
           ...s,
-          loading: false,
+          ready: true,
           error:
             data?.message ||
             "Evaluations could not be loaded. Please try again.",
@@ -69,7 +70,7 @@ function useEvaluations() {
       setState({
         faculty: data.faculty ?? [],
         services: data.services ?? [],
-        loading: false,
+        ready: true,
         error: "",
         signedOut: false,
       });
@@ -77,7 +78,7 @@ function useEvaluations() {
       if (err?.name === "AbortError") return;
       setState((s) => ({
         ...s,
-        loading: false,
+        ready: true,
         error:
           "Could not reach the server. Check your connection and try again.",
       }));
@@ -89,7 +90,7 @@ function useEvaluations() {
     // Coming back with the Back button restores the old page from memory; refresh
     // quietly so a form that was just submitted shows as completed.
     const onPageShow = (e) => {
-      if (e.persisted) load({ silent: true });
+      if (e.persisted) load();
     };
     window.addEventListener("pageshow", onPageShow);
     return () => {
@@ -113,7 +114,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function FacultyEvaluation({ forms = [], loading = false, failed = false }) {
+function FacultyEvaluation({ forms = [], ready = false, failed = false }) {
   const [selected, setSelected] = useState("");
   const pending = forms.filter((f) => f.status !== "completed");
   const completed = forms.filter((f) => f.status === "completed");
@@ -131,11 +132,11 @@ function FacultyEvaluation({ forms = [], loading = false, failed = false }) {
     window.location.href = `evaluate.php?type=faculty&id=${encodeURIComponent(value)}`;
   }
 
-  const placeholder = loading
-    ? "Loading teachers..."
-    : failed && forms.length === 0
+  // Don't claim "nothing available" before the first response has arrived.
+  const placeholder =
+    failed && forms.length === 0
       ? "Evaluations could not be loaded"
-      : pending.length
+      : pending.length || !ready
         ? "Choose a teacher."
         : forms.length
           ? "All faculty evaluations completed"
@@ -146,9 +147,7 @@ function FacultyEvaluation({ forms = [], loading = false, failed = false }) {
       <div className="d-flex justify-content-between align-items-baseline mb-3">
         <h2 className="h5 fw-bold mb-0">Faculty evaluation</h2>
         <span className="small text-body-secondary">
-          {loading
-            ? "Loading..."
-            : `${completed.length} of ${forms.length} completed`}
+          {completed.length} of {forms.length} completed
         </span>
       </div>
 
@@ -162,8 +161,7 @@ function FacultyEvaluation({ forms = [], loading = false, failed = false }) {
             id="facultySelect"
             value={selected}
             onChange={handleChange}
-            disabled={loading || pending.length === 0}
-            aria-busy={loading}
+            disabled={pending.length === 0}
           >
             <option value="" disabled>
               {placeholder}
@@ -184,32 +182,15 @@ function FacultyEvaluation({ forms = [], loading = false, failed = false }) {
   );
 }
 
-function ServiceEvaluation({ forms = [], loading = false, failed = false }) {
+function ServiceEvaluation({ forms = [], ready = false, failed = false }) {
   return (
     <section id="services">
       <div className="d-flex justify-content-between align-items-baseline mb-3">
         <h2 className="h5 fw-bold mb-0">Office and service evaluation</h2>
-        <span className="small text-body-secondary">
-          {loading ? "Loading..." : `${forms.length} forms`}
-        </span>
+        <span className="small text-body-secondary">{forms.length} forms</span>
       </div>
 
-      {loading && (
-        <div className="row g-3" aria-busy="true">
-          {[0, 1].map((n) => (
-            <div className="col-sm-6" key={n}>
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-body placeholder-glow">
-                  <span className="placeholder col-8 mb-2"></span>
-                  <span className="placeholder col-4"></span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!loading && !failed && forms.length === 0 && (
+      {ready && !failed && forms.length === 0 && (
         <div className="card border-0 shadow-sm">
           <div className="card-body text-center text-body-secondary small py-4">
             No office or service evaluations are available yet.
@@ -217,52 +198,50 @@ function ServiceEvaluation({ forms = [], loading = false, failed = false }) {
         </div>
       )}
 
-      {!loading && (
-        <div className="row g-3">
-          {forms.map((f) => {
-            const isDone = f.status === "completed";
-            return (
-              <div className="col-sm-6" key={f.id}>
-                <div className="card border-0 shadow-sm h-100">
-                  <div className="card-body d-flex align-items-center gap-3">
-                    <span className="icon-box rounded-3 fs-5 bg-primary-subtle text-primary-emphasis">
-                      <i className={`fas ${f.icon}`}></i>
-                    </span>
+      <div className="row g-3">
+        {forms.map((f) => {
+          const isDone = f.status === "completed";
+          return (
+            <div className="col-sm-6" key={f.id}>
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body d-flex align-items-center gap-3">
+                  <span className="icon-box rounded-3 fs-5 bg-primary-subtle text-primary-emphasis">
+                    <i className={`fas ${f.icon}`}></i>
+                  </span>
 
-                    <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <div className="fw-semibold lh-sm mb-1">{f.title}</div>
-                      <StatusBadge status={f.status} />
-                    </div>
-
-                    {!isDone && (
-                      <a
-                        href={`evaluate.php?type=service&id=${encodeURIComponent(f.id)}`}
-                        className="btn btn-sm btn-outline-primary stretched-link"
-                        aria-label={`Evaluate ${f.title}`}
-                      >
-                        <i className="fas fa-arrow-right"></i>
-                      </a>
-                    )}
+                  <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                    <div className="fw-semibold lh-sm mb-1">{f.title}</div>
+                    <StatusBadge status={f.status} />
                   </div>
+
+                  {!isDone && (
+                    <a
+                      href={`evaluate.php?type=service&id=${encodeURIComponent(f.id)}`}
+                      className="btn btn-sm btn-outline-primary stretched-link"
+                      aria-label={`Evaluate ${f.title}`}
+                    >
+                      <i className="fas fa-arrow-right"></i>
+                    </a>
+                  )}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
 
-export default function Home({ student, term, today, greeting }) {
-  const { faculty, services, loading, error, signedOut, reload } =
-    useEvaluations();
+export default function Home({ student, term, today, greeting, initial }) {
+  const { faculty, services, ready, error, signedOut, reload } =
+    useEvaluations(initial);
   const [notice, setNotice] = useState("");
 
   // Anything new on Moodle (a post, an announcement, a new evaluation form...):
   // reload the forms right away and tell the student.
   useMoodleLive((info, previous) => {
-    reload({ silent: true });
+    reload();
     const isNewNotification =
       info.latest && info.latest.id !== previous?.latest?.id;
     setNotice(
@@ -340,14 +319,14 @@ export default function Home({ student, term, today, greeting }) {
         <div className="col-lg-5">
           <FacultyEvaluation
             forms={faculty}
-            loading={loading}
+            ready={ready}
             failed={Boolean(error)}
           />
         </div>
         <aside className="col-lg-7">
           <ServiceEvaluation
             forms={services}
-            loading={loading}
+            ready={ready}
             failed={Boolean(error)}
           />
         </aside>

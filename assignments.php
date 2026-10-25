@@ -15,11 +15,22 @@ $student = [
 ];
 $term = "1st Semester, AY 2026-2027";
 
-// The page opens at once; the assignments are fetched by the browser from
-// assignments_feed.php (see src/pages/Assignments.jsx).
+// Load the assignments here so they are in the first paint. If Moodle fails,
+// pass nothing and the page falls back to fetching and showing the error.
+$initial = null;
+$feed = moodle_assignment_feed();
+if ($feed["ok"]) {
+    $pulse = moodle_change_fingerprint();
+    $initial = [
+        "data" => $feed["data"],
+        "version" => $pulse["ok"] ? ($pulse["data"]["version"] ?? null) : null,
+    ];
+}
+
 react_mount("assignments", [
     "student" => $student,
     "term" => $term,
+    "initial" => $initial,
 ]);
 ?>
 <script>

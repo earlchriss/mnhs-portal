@@ -37,11 +37,9 @@ $navCsrf = function_exists("auth_csrf_token") ? auth_csrf_token() : "";
                 <i class="fas fa-chevron-down caret"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
-                <li><span class="dropdown-item-text fw-semibold"><?= htmlspecialchars($navName) ?></span></li>
-                <li>
-                    <hr class="dropdown-divider">
-                </li>
                 <li><a class="dropdown-item" href="#">Profile</a></li>
+                <li><a class="dropdown-item" href="#">Settings</a></li>
+                <li><a class="dropdown-item" href="#">Preferences</a></li>
                 <li>
                     <hr class="dropdown-divider">
                 </li>

@@ -101,6 +101,33 @@ function AssignmentCard({ assignment }) {
 const FEED_URL = "assignments_feed.php";
 const POLL_MS = 10000;
 
+// Last known list, kept per student for the length of the browser tab. A repeat
+// visit paints it immediately while the real list is fetched in the background.
+function readCache(key) {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(key));
+    return Array.isArray(saved?.data) && saved.data.length ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(key, data, version) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ data, version }));
+  } catch {
+    // storage full or blocked: the page still works, just without the cache
+  }
+}
+
+function clearCache(key) {
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
 async function getJson(url) {
   const res = await fetch(url, {
     credentials: "same-origin",
@@ -127,39 +154,58 @@ async function getJson(url) {
   return body;
 }
 
-function useAssignments() {
-  const [assignments, setAssignments] = useState([]);
-  const [loading, setLoading] = useState(true);
+function useAssignments(initial, studentId) {
+  const cacheKey = `assignments:${studentId}`;
+  // Data from the server (`initial`) wins; otherwise use the saved copy so the
+  // first paint already has cards while the feed request is on its way.
+  const [cached] = useState(() => (initial ? null : readCache(cacheKey)));
+  const first = initial ?? cached;
+
+  const [assignments, setAssignments] = useState(first?.data ?? []);
+  const [loading, setLoading] = useState(!first);
   const [error, setError] = useState(null); // { message, expired }
   const [notice, setNotice] = useState(false);
-  const version = useRef(null);
+  const version = useRef(initial?.version ?? null);
+  const shown = useRef(Boolean(first)); // true once there is real data on screen
   const busy = useRef(false);
   const stopped = useRef(false);
 
-  const load = useCallback(async ({ fresh = false, quiet = false } = {}) => {
-    if (busy.current) return;
-    busy.current = true;
-    if (!quiet) setLoading(true);
-    try {
-      const body = await getJson(FEED_URL + (fresh ? "?fresh=1" : ""));
-      version.current = body.version ?? version.current;
-      setAssignments(body.data || []);
-      setError(null);
-    } catch (e) {
-      if (e.code === 401) stopped.current = true;
-      if (!quiet || e.code === 401) {
-        setError({ message: e.message, expired: e.code === 401 });
+  const load = useCallback(
+    async ({ fresh = false, quiet = false } = {}) => {
+      if (busy.current) return;
+      busy.current = true;
+      if (!quiet && !shown.current) setLoading(true);
+      try {
+        const body = await getJson(FEED_URL + (fresh ? "?fresh=1" : ""));
+        version.current = body.version ?? version.current;
+        shown.current = true;
+        setAssignments(body.data || []);
+        setError(null);
+        writeCache(cacheKey, body.data || [], version.current);
+      } catch (e) {
+        if (e.code === 401) {
+          stopped.current = true;
+          clearCache(cacheKey);
+        }
+        if (!quiet || e.code === 401) {
+          setError({ message: e.message, expired: e.code === 401 });
+        }
+      } finally {
+        busy.current = false;
+        setLoading(false);
       }
-    } finally {
-      busy.current = false;
-      setLoading(false);
-    }
-  }, []);
+    },
+    [cacheKey],
+  );
 
-  // First load, right away.
+  // First load: save what the server sent, or fetch (and refresh the saved copy).
   useEffect(() => {
-    load();
-  }, [load]);
+    if (initial) {
+      writeCache(cacheKey, initial.data ?? [], initial.version ?? null);
+    } else {
+      load();
+    }
+  }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Watch Moodle: when something new is posted, reload the list.
   useEffect(() => {
@@ -187,6 +233,7 @@ function useAssignments() {
       } catch (e) {
         if (e.code === 401) {
           stopped.current = true;
+          clearCache(cacheKey);
           setError({ message: e.message, expired: true });
           return;
         }
@@ -222,7 +269,7 @@ function useAssignments() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("pageshow", onVisible);
     };
-  }, [load]);
+  }, [load, cacheKey]);
 
   return {
     assignments,
@@ -233,28 +280,11 @@ function useAssignments() {
   };
 }
 
-function SkeletonCards() {
-  return (
-    <div className="row g-3" aria-busy="true" aria-label="Loading assignments">
-      {[0, 1, 2].map((n) => (
-        <div className="col-md-6 col-xl-4" key={n}>
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-body placeholder-glow">
-              <span className="placeholder col-4 mb-2"></span>
-              <span className="placeholder col-9 mb-3"></span>
-              <span className="placeholder col-12 mb-1"></span>
-              <span className="placeholder col-10 mb-4"></span>
-              <span className="placeholder col-6"></span>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
+export default function Assignments({ student, term, initial }) {
+  const { assignments, loading, error, notice, reload } = useAssignments(
+    initial,
+    student.id,
   );
-}
-
-export default function Assignments({ student, term }) {
-  const { assignments, loading, error, notice, reload } = useAssignments();
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const visible = assignments.filter((assignment) => {
@@ -369,9 +399,7 @@ export default function Assignments({ student, term }) {
         </div>
       )}
 
-      {loading && assignments.length === 0 ? (
-        <SkeletonCards />
-      ) : visible.length ? (
+      {visible.length ? (
         <div className="row g-3">
           {visible.map((assignment) => (
             <div className="col-md-6 col-xl-4" key={assignment.id}>
@@ -379,7 +407,7 @@ export default function Assignments({ student, term }) {
             </div>
           ))}
         </div>
-      ) : (
+      ) : !loading ? (
         <div className="card border-0 shadow-sm">
           <div className="card-body text-center text-body-secondary py-5">
             {assignments.length
@@ -389,7 +417,7 @@ export default function Assignments({ student, term }) {
                 : "No activities, quizzes, or other graded work are available for your subjects."}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

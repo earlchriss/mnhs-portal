@@ -38,8 +38,8 @@
         <img src="/assets/img/banner.png" alt="Mabolo National High School" class="drawer-logo">
     </div>
     <nav class="drawer-nav">
-        <a class="drawer-link <?= isActive('index.php') ?>" href="/">Home</a>
-        <a class="drawer-link <?= isActive('faculties.php') ?>" href="./faculties.php">Faculties</a>
+        <a class="drawer-link <?= isActive('index.php') ?>" href="./">Home</a>
+        <a class="drawer-link <?= isActive('faculty.php') ?>" href="./faculty.php">Faculties</a>
         <a class="drawer-link <?= isActive('schedule.php') ?>" href="./schedule.php">Schedule</a>
         <a class="drawer-link <?= isActive('subjects.php') ?>" href="./subjects.php">Subjects</a>
         <a class="drawer-link <?= isActive('users.php') ?>" href="./users.php">Users</a>
