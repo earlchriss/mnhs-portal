@@ -203,11 +203,11 @@ function auth_fetch_site_info(string $token): array
  */
 function auth_detect_admin(array $user): bool
 {
-    if (array_key_exists("is_admin", $user)) {
-        return (bool) $user["is_admin"];
-    }
     if (in_array(strtolower((string) ($user["username"] ?? "")), auth_admin_usernames(), true)) {
         return true;
+    }
+    if (array_key_exists("is_admin", $user)) {
+        return (bool) $user["is_admin"];
     }
 
     $token = (string) ($user["token"] ?? "");

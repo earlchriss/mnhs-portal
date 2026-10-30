@@ -7,7 +7,7 @@
  *                                (call it once, e.g. in footer.php)
  */
 
-function react_mount(string $page, array $props = []): void
+function react_mount(string $page, array $props = [], string $wrapperClass = "page-content home bg-body-tertiary min-vh-100"): void
 {
     // JSON_HEX_* flags make the JSON safe to embed inside a <script> tag (prevents XSS / </script> breakouts)
     $json = json_encode(
@@ -15,7 +15,7 @@ function react_mount(string $page, array $props = []): void
         JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
     );
 
-    echo '<main class="page-content home bg-body-tertiary min-vh-100">';
+    echo '<main class="' . htmlspecialchars($wrapperClass, ENT_QUOTES, 'UTF-8') . '">';
     echo '<div id="root" data-page="' . htmlspecialchars($page, ENT_QUOTES) . '"></div>';
     echo '<script type="application/json" id="page-props">' . $json . '</script>';
     echo '<noscript><div class="container-xl p-4">Please enable JavaScript to use the student portal.</div></noscript>';

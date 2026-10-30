@@ -62,6 +62,7 @@ $navCsrf = function_exists("auth_csrf_token") ? auth_csrf_token() : "";
         <a class="drawer-link <?= isActive('assignments.php') ?>" href="/assignments.php">Assignments</a>
         <a class="drawer-link <?= isActive('schedule.php') ?>" href="/schedule.php">Schedule</a>
         <a class="drawer-link <?= isActive('egrade.php') ?>" href="/egrade.php">E-Grade</a>
+        <a class="drawer-link" href="/teacher/">Teacher Portal</a>
     </nav>
 </aside>
 <div class="drawer-backdrop" id="drawerBackdrop"></div>

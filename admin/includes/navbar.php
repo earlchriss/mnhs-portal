@@ -58,6 +58,7 @@ $nav_h = fn($v) => htmlspecialchars((string) $v, ENT_QUOTES, "UTF-8");
         <a class="drawer-link <?= isActive('subjects.php') ?>" href="./subjects.php">Subjects</a>
         <a class="drawer-link <?= isActive('users.php') ?>" href="./users.php">Users</a>
         <a class="drawer-link <?= isActive('site-settings.php') ?>" href="./site-settings.php">Site Settings</a>
+        <a class="drawer-link" href="/teacher/">Teacher Portal</a>
     </nav>
 </aside>
 <div class="drawer-backdrop" id="drawerBackdrop"></div>

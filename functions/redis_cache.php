@@ -48,7 +48,7 @@ function rcache_conn(bool $drop = false): ?Redis
             $state["error"] = "Could not connect to Redis at {$host}:{$port}.";
             return null;
         }
-        $pass = getenv("REDIS_PASS");
+        $pass = getenv("REDIS_PASSWORD") ?: getenv("REDIS_PASS");
         if ($pass) {
             $redis->auth($pass);
         }

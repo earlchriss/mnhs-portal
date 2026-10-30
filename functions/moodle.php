@@ -99,6 +99,39 @@ function moodle_user_json(string $function, array $params): array
     return $result;
 }
 
+/** Check the signed-in user's course roles using their own Moodle token. */
+function moodle_user_is_teacher(): bool
+{
+    $user = auth_user();
+    $token = auth_user_token();
+    if (!$user || !$token) return false;
+
+    $courses = moodle_user_json('core_enrol_get_users_courses', ['userid' => $user['id']]);
+    if (!$courses['ok'] || !is_array($courses['data'] ?? null)) return false;
+
+    $calls = [];
+    foreach ($courses['data'] as $course) {
+        $courseId = (int) ($course['id'] ?? 0);
+        if ($courseId > 0) {
+            $calls[$courseId] = [
+                'function' => 'core_enrol_get_enrolled_users',
+                'params' => ['courseid' => $courseId],
+                'token' => $token,
+            ];
+        }
+    }
+    foreach (moodle_get_json_multi($calls) as $result) {
+        if (!$result['ok'] || !is_array($result['data'] ?? null)) continue;
+        foreach ($result['data'] as $person) {
+            if ((int) ($person['id'] ?? 0) !== (int) $user['id']) continue;
+            foreach ($person['roles'] ?? [] as $role) {
+                if (in_array($role['shortname'] ?? '', ['editingteacher', 'teacher'], true)) return true;
+            }
+        }
+    }
+    return false;
+}
+
 function moodle_format_time(int $timestamp, string $format = "Y-m-d H:i"): string
 {
     $date = new DateTime("@{$timestamp}");
@@ -401,7 +434,7 @@ function moodle_cache_clear(): int
 
 function moodle_decode_response($body, string $error, int $status): array
 {
-    if ($body === false || $body === null || $error) {
+    if ($body === false || $body === null || $error || $status < 200 || $status >= 300) {
         return ["ok" => false, "message" => "Moodle is temporarily unavailable. Assignments could not be synchronized."];
     }
     $data = json_decode($body, true);
@@ -449,8 +482,11 @@ function moodle_get_json_multi(array $calls): array
                 "wsfunction" => $call["function"],
                 "moodlewsrestformat" => "json",
             ]);
-            $handle = curl_init($baseUrl . "?" . http_build_query($query));
-            curl_setopt_array($handle, moodle_curl_options(2000, 5000));
+            $handle = curl_init($baseUrl);
+            curl_setopt_array($handle, moodle_curl_options(2000, 5000) + [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => http_build_query($query),
+            ]);
             curl_multi_add_handle($multi, $handle);
             $handles[$key] = $handle;
         }

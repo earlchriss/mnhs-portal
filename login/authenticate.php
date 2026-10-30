@@ -64,9 +64,29 @@ if (!$result["ok"]) {
 
 auth_sign_in($result["data"], !empty($input["remember"]));
 
-// Admins who did not come from a specific page land in the admin portal.
+// Respect an explicitly requested page. Otherwise route admins first, then teachers.
 $redirect = auth_safe_next($input["next"] ?? null);
-if ($redirect === "/" && auth_is_admin()) {
-    $redirect = "/admin/";
+if (auth_is_admin()) {
+    if ($redirect === "/") $redirect = "/admin/";
+} else {
+        $moodleTeacher = moodle_user_is_teacher();
+        if ($moodleTeacher && $redirect === "/") {
+            $redirect = "/teacher/";
+        }
+        try {
+            require_once __DIR__ . "/../functions/db.php";
+            if ($moodleTeacher) {
+                // Only a role verified with Moodle can create a local teacher record.
+                $teacher = auth_user();
+                $sync = db_connect()->prepare("INSERT INTO teachers (moodle_id, name) VALUES (:id, :name) ON DUPLICATE KEY UPDATE name = VALUES(name)");
+                $sync->execute(['id' => (int) $teacher['id'], 'name' => mb_substr($teacher['name'], 0, 120)]);
+            }
+            $stmt = db_connect()->prepare("SELECT 1 FROM teachers WHERE moodle_id = :id LIMIT 1");
+            $stmt->execute(["id" => (int) auth_user()["id"]]);
+            if ($stmt->fetchColumn() !== false && $redirect === "/") $redirect = "/teacher/";
+        } catch (Throwable $e) {
+            // A database outage must not prevent Moodle users from signing in.
+            error_log("Teacher login routing: " . $e->getMessage());
+        }
 }
 respond(["ok" => true, "redirect" => $redirect]);

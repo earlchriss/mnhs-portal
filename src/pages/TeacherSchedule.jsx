@@ -1,0 +1,5 @@
+export default function TeacherSchedule({ schedule = [] }) {
+  return <div className="container-xl py-4"><h1 className="h3 fw-bold">My Schedule</h1><p className="text-body-secondary">Your assigned classes and schedule.</p><div className="card border-0 shadow-sm">
+    {!schedule.length ? <div className="card-body text-body-secondary">No schedules have been assigned to your account yet.</div> : <div className="table-responsive"><table className="table table-hover align-middle mb-0"><thead className="table-light"><tr><th>Subject</th><th>Section</th><th>Days</th><th>Time</th><th>Room</th><th><span className="visually-hidden">Class</span></th></tr></thead><tbody>{schedule.map(row => <tr key={row.id}><td><div className="fw-semibold">{row.title}</div><div className="small text-body-secondary">{row.code}</div></td><td>{row.section}</td><td>{row.days}</td><td>{row.start_time}–{row.end_time}</td><td>{row.room}</td><td><a className="btn btn-sm btn-outline-primary" href={`/teacher/class.php?id=${encodeURIComponent(row.id)}`}>Students &amp; grades</a></td></tr>)}</tbody></table></div>}
+  </div></div>;
+}

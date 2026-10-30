@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.example
+node_modules/
+assets/dist/
+functions/maboqraj_portals.sql

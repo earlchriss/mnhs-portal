@@ -1,0 +1,51 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8080}:80"
+    environment:
+      DB_HOST: ${DB_HOST:?Set DB_HOST in .env}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:?Set DB_NAME in .env}
+      DB_USER: ${DB_USER:?Set DB_USER in .env}
+      DB_PASS: ${DB_PASS:?Set DB_PASS in .env}
+      MOODLE_REST_URL: ${MOODLE_REST_URL:?Set MOODLE_REST_URL in .env}
+      MOODLE_WSTOKEN: ${MOODLE_WSTOKEN:-}
+      MOODLE_LOGIN_SERVICE: ${MOODLE_LOGIN_SERVICE:-moodle_mobile_app}
+      ADMIN_USERNAMES: ${ADMIN_USERNAMES:-}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      redis:
+        condition: service_healthy
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+  db:
+    image: mariadb:11.4
+    profiles: ["local-db"]
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:?Set DB_NAME in .env}
+      MARIADB_USER: ${DB_USER:?Set DB_USER in .env}
+      MARIADB_PASSWORD: ${DB_PASS:?Set DB_PASS in .env}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-}
+    volumes:
+      - portal_db:/var/lib/mysql
+      - ./functions/maboqraj_portals.sql:/docker-entrypoint-initdb.d/001-portal.sql:ro
+      - ./migrations/001_teacher_grades.sql:/docker-entrypoint-initdb.d/002-teacher-grades.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  portal_db:

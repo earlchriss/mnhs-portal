@@ -66,18 +66,15 @@ export default function Login({
   }
 
   return (
-    <main className="login-page">
-      <section className="login-panel" aria-label="Student Portal sign in">
-        <div className="login-brand">
-          <img src={logo} alt={schoolName} />
-          <span>{schoolName}</span>
-        </div>
-        <div className="login-copy">
-          <span className="login-eyebrow">Student Portal</span>
-          <h1>Welcome back</h1>
-          <p>
-            Sign in to continue to your classes, grades and campus services.
-          </p>
+    <div className="container min-vh-100 d-flex align-items-center py-4">
+      <div className="row justify-content-center w-100 mx-0">
+      <section className="col-12 col-sm-10 col-md-7 col-lg-5 col-xl-4" aria-label="Portal sign in">
+      <div className="card shadow-sm">
+      <div className="card-body p-4 p-sm-5">
+        <div className="text-center mb-4">
+          <img src={logo} alt={schoolName} className="img-fluid mb-4" />
+          <h1 className="h3 fw-bold">Welcome back</h1>
+          <p className="text-body-secondary mb-0">Sign in with your Moodle account to continue.</p>
         </div>
         {message && (
           <div className="alert alert-danger small" role="alert">
@@ -175,16 +172,16 @@ export default function Login({
               </>
             ) : (
               <>
-                <i className="fas fa-arrow-right-to-bracket me-2"></i>Sign in
+                Sign in <i className="fas fa-arrow-right ms-2" aria-hidden="true"></i>
               </>
             )}
           </button>
         </form>
-        <p className="login-footer">
-          Need help accessing your account?{" "}
-          <a href="mailto:support@mabolo.edu.ph">Contact support</a>
-        </p>
+        <p className="text-body-secondary text-center small mt-4 mb-0">Your account is authenticated through Moodle.</p>
+      </div>
+      </div>
       </section>
-    </main>
+      </div>
+    </div>
   );
 }

@@ -1,0 +1,10 @@
+node_modules
+assets/dist
+.env
+.env.*
+.git
+.gitignore
+Dockerfile
+compose.yaml
+README.md
+**/*.sql

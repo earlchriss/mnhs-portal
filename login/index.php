@@ -21,6 +21,6 @@ react_mount("login", [
     "next" => auth_safe_next($_GET["next"] ?? null),
     "endpoint" => "/login/authenticate.php",
     "forgotUrl" => moodle_site_base() . "/login/forgot_password.php",
-]);
+], "min-vh-100 bg-body-tertiary");
 
 include __DIR__ . "/../includes/footer.php";
